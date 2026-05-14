@@ -1,7 +1,7 @@
 #!/bin/bash
 
 mode="${1}"
-id="${2:-0}" # デフォルト値0を設定
+id="${2:-${ROS_DOMAIN_ID:-0}}"
 out_dir="${3:-/output/$(date +%Y%m%d-%H%M%S)/d${id}}"
 
 case "${mode}" in
