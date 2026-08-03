@@ -4,7 +4,7 @@
   <arg name="use_sim_time" default="true"/>
   <arg name="image_topic" default="/sensing/camera/image_raw"/>
   <arg name="control_cmd_topic" default="/awsim/control_cmd"/>
-  <arg name="ckpt_path" default="$(find-pkg-share pilot_net_controller)/ckpt/pilotnet_weights.npy"/>
+  <arg name="ckpt_path" default="/home/hirosueryoko/aichallenge-racingkart/aichallenge/ml_workspace/pilot_net/weights/pilotnet_weights.npy"/>
 
   <!-- pilot_net_node -->
   <node pkg="pilot_net_controller"
