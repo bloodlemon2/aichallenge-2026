@@ -135,6 +135,12 @@
         <param name="wall_margin" value="0.75"/>
         <param name="avoidance_offset" value="0.75"/>
         <param name="clearance_tie_epsilon" value="0.05"/>
+        <param name="side_detection_forward" value="2.0"/>
+        <param name="side_detection_backward" value="1.0"/>
+        <param name="side_detection_lateral" value="1.4"/>
+        <param name="side_avoidance_offset" value="0.35"/>
+        <param name="side_shift_distance" value="10.0"/>
+        <param name="side_contact_speed_threshold" value="4.44"/>
         <remap from="input/trajectory" to="/planning/scenario_planning/base_trajectory"/>
         <remap from="input/odometry" to="/localization/kinematic_state"/>
         <remap from="input/objects" to="/aichallenge/objects"/>

@@ -100,6 +100,12 @@ class TrajectoryAvoidanceNode(Node):
         self.lanelet_map_path = self.declare_parameter("lanelet_map_path", "").value
         self.wall_margin = self.declare_parameter("wall_margin", 0.45).value
         self.clearance_tie_epsilon = self.declare_parameter("clearance_tie_epsilon", 0.05).value
+        self.side_detection_forward = self.declare_parameter("side_detection_forward", 2.0).value
+        self.side_detection_backward = self.declare_parameter("side_detection_backward", 1.0).value
+        self.side_detection_lateral = self.declare_parameter("side_detection_lateral", 1.4).value
+        self.side_avoidance_offset = self.declare_parameter("side_avoidance_offset", 0.35).value
+        self.side_shift_distance = self.declare_parameter("side_shift_distance", 10.0).value
+        self.side_contact_speed_threshold = self.declare_parameter("side_contact_speed_threshold", 4.44).value
         self.trajectory: Optional[Trajectory] = None
         self.odometry: Optional[Odometry] = None
         self.objects: List[TrackedObject] = []
@@ -201,6 +207,33 @@ class TrajectoryAvoidanceNode(Node):
         dx, dy = obj.x - pose.position.x, obj.y - pose.position.y
         return dx * math.cos(heading) + dy * math.sin(heading) > 0.0 and math.hypot(dx, dy) < self.detection_distance
 
+    def relative_position(self, obj: TrackedObject) -> Tuple[float, float]:
+        assert self.odometry is not None
+        pose = self.odometry.pose.pose
+        heading = yaw(pose.orientation)
+        dx, dy = obj.x - pose.position.x, obj.y - pose.position.y
+        forward = dx * math.cos(heading) + dy * math.sin(heading)
+        left = -dx * math.sin(heading) + dy * math.cos(heading)
+        return forward, left
+
+    def side_contact_offset(self) -> float:
+        assert self.odometry is not None
+        if abs(self.odometry.twist.twist.linear.x) > self.side_contact_speed_threshold:
+            return 0.0
+        offset = 0.0
+        for obj in self.objects:
+            forward, left = self.relative_position(obj)
+            if not -self.side_detection_backward <= forward <= self.side_detection_forward:
+                continue
+            lateral_limit = max(self.side_detection_lateral, obj.radius + self.safety_margin)
+            if abs(left) > lateral_limit:
+                continue
+            if left > 0.0:
+                offset -= self.side_avoidance_offset
+            elif left < 0.0:
+                offset += self.side_avoidance_offset
+        return max(-self.side_avoidance_offset, min(self.side_avoidance_offset, offset))
+
     def nearest_index(self, trajectory: Trajectory) -> int:
         assert self.odometry is not None
         ego = self.odometry.pose.pose.position
@@ -263,6 +296,25 @@ class TrajectoryAvoidanceNode(Node):
             orientation.z, orientation.w = math.sin(heading * 0.5), math.cos(heading * 0.5)
         return result
 
+    def side_shifted(self, base: Trajectory, arc: Sequence[float], begin: int, offset: float) -> Trajectory:
+        result = copy.deepcopy(base)
+        end = max(1.0e-6, self.side_shift_distance)
+        for i in range(begin, len(result.points)):
+            if arc[i] > end:
+                break
+            amount = 1.0 - smoothstep(arc[i] / end)
+            point, base_pose = result.points[i].pose.position, base.points[i].pose
+            heading = yaw(base_pose.orientation)
+            point.x += -math.sin(heading) * offset * amount
+            point.y += math.cos(heading) * offset * amount
+        for i in range(begin, len(result.points) - 1):
+            point, next_point = result.points[i].pose.position, result.points[i + 1].pose.position
+            heading = math.atan2(next_point.y - point.y, next_point.x - point.x)
+            orientation = result.points[i].pose.orientation
+            orientation.x, orientation.y = 0.0, 0.0
+            orientation.z, orientation.w = math.sin(heading * 0.5), math.cos(heading * 0.5)
+        return result
+
     def drivable_margin(self, point: Tuple[float, float]) -> float:
         if not self.lanelets:
             return float("inf")
@@ -290,6 +342,19 @@ class TrajectoryAvoidanceNode(Node):
             checked = True
         return minimum if checked else float("inf")
 
+    def wall_clearance_between(self, trajectory: Trajectory, arc: Sequence[float], begin: int, end_s: float) -> float:
+        if not self.lanelets:
+            return float("inf")
+        minimum = float("inf")
+        checked = False
+        for i in range(begin, len(trajectory.points)):
+            if arc[i] > end_s:
+                break
+            point = trajectory.points[i].pose.position
+            minimum = min(minimum, self.drivable_margin((point.x, point.y)))
+            checked = True
+        return minimum if checked else float("inf")
+
     def publish_trajectory(self) -> None:
         if self.trajectory is None:
             return
@@ -299,6 +364,12 @@ class TrajectoryAvoidanceNode(Node):
             return
         begin = self.nearest_index(self.trajectory)
         arc = self.arc_lengths(self.trajectory, begin)
+        side_offset = self.side_contact_offset()
+        if side_offset != 0.0:
+            side_candidate = self.side_shifted(self.trajectory, arc, begin, side_offset)
+            if self.wall_clearance_between(side_candidate, arc, begin, self.side_shift_distance) >= self.wall_margin:
+                self.publisher.publish(side_candidate)
+                return
         base_clearance = self.clearance(self.trajectory, arc, begin)
         if base_clearance >= 0.0:
             self.publisher.publish(self.trajectory)
