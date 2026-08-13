@@ -28,6 +28,7 @@
   <exec_depend>mission_planner</exec_depend>
   <exec_depend>behavior_path_planner</exec_depend>
   <exec_depend>path_to_trajectory</exec_depend>
+  <exec_depend>trajectory_avoidance</exec_depend>
   <exec_depend>default_ad_api</exec_depend>
   <exec_depend>ad_api_adaptors</exec_depend>
   <exec_depend>simple_pure_pursuit</exec_depend>
