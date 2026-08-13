@@ -47,7 +47,7 @@ mpc:
   a_min: -0.5 #-1.6 # m/s^2
   a_max: 3.0 #0.7 # m/s^2
   delta_max_deg: 32.0 # degrees
-  steer_rate_max: 0.35 # rad/s
+  steer_rate_max: 0.38 #0.35 # rad/s
   control_rate: 40.0 # Hz
   steering_tire_angle_gain_var: 1.639
   # steering_tire_angle_gain_var: 1.0
