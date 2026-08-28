@@ -97,6 +97,29 @@ python -c "from lerobot.datasets import LeRobotDataset; ds=LeRobotDataset('local
 - `action`: `[acceleration, steering_tire_angle]`
 - `observation.state`: `[longitudinal_velocity, heading_rate]`
 
+### データセット名を変えて変換する場合
+
+複数のrosbagや車両ごとのデータを分けて管理する場合は、変換時に `--repo-id` と `--outdir` を変えます。
+
+例: `d2_learning_bag` を別データセットとして作る場合:
+
+```bash
+python3 convert_rosbag_to_lerobot.py \
+  --bags-dir ~/aichallenge/aichallenge-2026/aichallenge/ml_workspace/dataset/d2_learning_bag \
+  --outdir ./dataset/aichallenge_act_d2 \
+  --repo-id local/aichallenge_act_d2 \
+  --fps 40 \
+  --state-mode vehicle_status \
+  --overwrite
+```
+
+この場合、学習時には以下の2つを同じ組み合わせで指定します。
+
+```text
+DATASET_REPO_ID=local/aichallenge_act_d2
+DATASET_ROOT=./dataset/aichallenge_act_d2
+```
+
 ## 3. GPU確認
 
 GPUが見えない場合は、NVIDIAデバイスノードを作成します。
@@ -132,6 +155,15 @@ python -c "from torchvision.models import resnet18, ResNet18_Weights; resnet18(w
 
 ## 5. ACT 学習
 
+学習に使うデータセットは `DATASET_REPO_ID` と `DATASET_ROOT` で指定します。変換時の `--repo-id` と `--outdir` に対応させてください。
+
+デフォルトは以下です。
+
+```text
+DATASET_REPO_ID=local/aichallenge_act
+DATASET_ROOT=./dataset/aichallenge_act
+```
+
 スモークテスト:
 
 ```bash
@@ -151,6 +183,21 @@ OUTPUT_DIR=./outputs/train/act_$(date +%Y%m%d_%H%M%S) \
 ./train_act.bash
 ```
 
+別データセットを指定してGPU学習する例:
+
+```bash
+DATASET_REPO_ID=local/aichallenge_act_d2 \
+DATASET_ROOT=./dataset/aichallenge_act_d2 \
+DEVICE=cuda \
+STEPS=100000 \
+BATCH_SIZE=8 \
+NUM_WORKERS=4 \
+SAVE_FREQ=5000 \
+LOG_FREQ=100 \
+OUTPUT_DIR=./outputs/train/act_d2_$(date +%Y%m%d_%H%M%S) \
+./train_act.bash
+```
+
 ResNet18事前学習重みを使う場合:
 
 ```bash
@@ -163,6 +210,63 @@ SAVE_FREQ=5000 \
 LOG_FREQ=100 \
 OUTPUT_DIR=./outputs/train/act_$(date +%Y%m%d_%H%M%S) \
 ./train_act.bash
+```
+
+これはACT全体の学習済みpolicyを読む指定ではなく、画像backboneだけをImageNet重みで初期化する指定です。
+
+### 学習済みACTを別データでfine-tuneする場合
+
+一度自分のデータで学習したACT policyを、新しいデータセットでさらに学習できます。この場合は `--policy.path` に既存checkpointの `pretrained_model` ディレクトリを指定します。
+
+例: `aichallenge_act_d2` で追加学習する場合:
+
+```bash
+lerobot-train \
+  --dataset.repo_id=local/aichallenge_act_d2 \
+  --dataset.root=./dataset/aichallenge_act_d2 \
+  --policy.path=./outputs/train/act_20260825_202544/checkpoints/100000/pretrained_model \
+  --policy.device=cuda \
+  --output_dir=./outputs/train/act_finetune_d2_$(date +%Y%m%d_%H%M%S) \
+  --job_name=act_finetune_d2 \
+  --policy.push_to_hub=false \
+  --wandb.enable=false \
+  --steps=50000 \
+  --batch_size=8 \
+  --num_workers=4 \
+  --save_freq=5000 \
+  --log_freq=100
+```
+
+`--policy.path` には以下のようなディレクトリを指定します。
+
+```text
+outputs/train/<old_run>/checkpoints/<step>/pretrained_model
+```
+
+fine-tune後に走行で使うには、fine-tuneしたcheckpointをONNXへexportし直してください。
+
+```bash
+python3 export_act_to_onnx.py \
+  --policy-path ./outputs/train/act_finetune_d2_20260828_210000/checkpoints/050000/pretrained_model \
+  --output ./ckpt/act_policy.onnx
+```
+
+### 中断した学習runを再開する場合
+
+同じrunを中断地点から続ける場合はfine-tuneではなく `--resume=true` を使います。データセットや設定を変えずに、optimizerやschedulerの状態も含めて再開します。
+
+```bash
+lerobot-train \
+  --resume=true \
+  --config_path=./outputs/train/act_20260825_202544/checkpoints/100000/train_config.json
+```
+
+使い分け:
+
+```text
+画像backboneだけ事前学習重みを使う: PRETRAINED_BACKBONE_WEIGHTS=ResNet18_Weights.IMAGENET1K_V1
+新しいデータセットで追加学習する: --policy.path=<pretrained_model>
+中断した同じrunを続ける: --resume=true --config_path=<train_config.json>
 ```
 
 CPUで短く動かす場合:
