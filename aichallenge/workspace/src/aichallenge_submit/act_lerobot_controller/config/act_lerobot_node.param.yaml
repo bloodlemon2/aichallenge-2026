@@ -11,8 +11,9 @@
       image_width: 320
       crop_top_ratio: 0.375
       crop_bottom_ratio: 0.0
+      n_action_steps: 20
 
-    state_mode: "none"  # "none", "odometry", or "vehicle_status"
+    state_mode: "vehicle_status"  # "none", "odometry", or "vehicle_status"
     control_mode: "ai"  # "ai" or "fixed"
     acceleration: 0.6
     debug: false

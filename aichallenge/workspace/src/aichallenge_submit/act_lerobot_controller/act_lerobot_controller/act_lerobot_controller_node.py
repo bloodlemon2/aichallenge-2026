@@ -27,6 +27,7 @@ class ActLeRobotNode(Node):
         self.declare_parameter("model.image_width", 320)
         self.declare_parameter("model.crop_top_ratio", 0.375)
         self.declare_parameter("model.crop_bottom_ratio", 0.0)
+        self.declare_parameter("model.n_action_steps", 20)
         self.declare_parameter("state_mode", "none")
         self.declare_parameter("control_mode", "ai")
         self.declare_parameter("acceleration", 0.6)
@@ -46,6 +47,7 @@ class ActLeRobotNode(Node):
             image_width=self.get_parameter("model.image_width").value,
             crop_top_ratio=self.get_parameter("model.crop_top_ratio").value,
             crop_bottom_ratio=self.get_parameter("model.crop_bottom_ratio").value,
+            n_action_steps=self.get_parameter("model.n_action_steps").value,
             state_mode=self.get_parameter("state_mode").value,
             control_mode=self.get_parameter("control_mode").value,
             acceleration=self.get_parameter("acceleration").value,

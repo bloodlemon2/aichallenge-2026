@@ -179,9 +179,75 @@ DEVICE=cpu STEPS=5000 BATCH_SIZE=1 NUM_WORKERS=0 SAVE_FREQ=1000 LOG_FREQ=50 OUTP
 outputs/train/<run_name>/checkpoints/100000/pretrained_model
 ```
 
-## 6. ROS2 推論
+## 6. ONNX export
 
-ホスト側で `ros2 launch` する場合、AI Challenge workspaceをsourceします。Docker内 `make autoware-build` の symlink install はホストからリンク先が壊れることがあるため、見えない場合は `act_lerobot_controller` だけホストでビルドします。
+`make dev` のAutoware Docker内では LeRobot v0.6.0 を直接使いません。学習済みpolicyをONNXへ変換し、ROS2ノードは `onnxruntime` だけで推論します。
+
+```bash
+cd ~/aichallenge/aichallenge-2026/aichallenge/ml_workspace/act_lerobot
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate lerobot-aichallenge
+
+python3 export_act_to_onnx.py \
+  --policy-path ./outputs/train/act_20260825_202544/checkpoints/100000/pretrained_model \
+  --output ./ckpt/act_policy.onnx
+```
+
+ONNXの確認:
+
+```bash
+python -c "import onnxruntime as ort, numpy as np; s=ort.InferenceSession('./ckpt/act_policy.onnx', providers=['CPUExecutionProvider']); y=s.run(None, {'image':np.zeros((1,3,200,320),np.float32), 'state':np.zeros((1,2),np.float32)})[0]; print(y.shape, y[0,0])"
+```
+
+期待するshape:
+
+```text
+(1, 20, 2)
+```
+
+## 7. Docker image更新
+
+ROS2推論には `onnxruntime` が必要です。`requirements.txt` に追加済みなので、Docker imageを再ビルドします。
+
+```bash
+cd ~/aichallenge/aichallenge-2026
+./docker_build.sh dev
+make autoware-build
+```
+
+コンテナ内で確認:
+
+```bash
+docker compose run --rm --no-deps autoware-command \
+  bash -lc 'python3 -c "import onnxruntime as ort; print(ort.__version__)"'
+```
+
+## 8. ROS2 推論
+
+`CONTROL_METHOD=act_lerobot make dev` で起動する場合、policy pathはDocker内パスです。デフォルトは以下です。
+
+```text
+/aichallenge/ml_workspace/act_lerobot/ckpt/act_policy.onnx
+```
+
+通常の起動:
+
+```bash
+cd ~/aichallenge/aichallenge-2026
+make down
+CONTROL_METHOD=act_lerobot make dev
+```
+
+ACTで制御しているか確認:
+
+```bash
+ROS_DOMAIN_ID=1 docker compose run --rm --no-deps autoware-command \
+  bash -lc 'source /opt/ros/humble/setup.bash && source /aichallenge/workspace/install/setup.bash && ros2 topic info -v /control/command/control_cmd'
+```
+
+`Node name: act_lerobot_controller_node` ならACTです。
+
+ホスト側で単体 `ros2 launch` する場合、AI Challenge workspaceをsourceします。Docker内 `make autoware-build` の symlink install はホストからリンク先が壊れることがあるため、見えない場合は `act_lerobot_controller` だけホストでビルドします。
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -200,7 +266,7 @@ ros2 pkg list | grep act_lerobot_controller
 
 ```bash
 ros2 launch act_lerobot_controller act_lerobot.launch.xml \
-  policy_path:=/home/hirosueryoko/aichallenge/aichallenge-2026/aichallenge/ml_workspace/act_lerobot/outputs/train/<run_name>/checkpoints/100000/pretrained_model \
+  policy_path:=/home/hirosueryoko/aichallenge/aichallenge-2026/aichallenge/ml_workspace/act_lerobot/ckpt/act_policy.onnx \
   use_sim_time:=true
 ```
 
