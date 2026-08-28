@@ -25,3 +25,4 @@ doc/tmp/*
 
 docs/plan/
 aichallenge/ml_workspace/act_lerobot/ckpt/act_policy.onnx
+aichallenge/ml_workspace/act_lerobot/ckpt/act_policy_0828_1cart.onnx

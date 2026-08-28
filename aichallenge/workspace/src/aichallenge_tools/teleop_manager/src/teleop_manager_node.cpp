@@ -37,6 +37,7 @@ TeleopManagerNode::TeleopManagerNode()
   declare_parameter<int>("reset_button_index", 7);
   declare_parameter<double>("timer_hz", 40.0);
   declare_parameter<double>("joy_timeout_sec", 0.5);
+  declare_parameter<double>("reverse_deadzone", 0.05);
   declare_parameter<int>("dpad_lr_axis_index", 6); 
   declare_parameter<int>("dpad_ud_axis_index", 7); 
 
@@ -59,6 +60,7 @@ TeleopManagerNode::TeleopManagerNode()
   get_parameter("reset_button_index", reset_button_index_);
   get_parameter("timer_hz", timer_hz_);
   get_parameter("joy_timeout_sec", joy_timeout_sec_);
+  get_parameter("reverse_deadzone", reverse_deadzone_);
   get_parameter("dpad_lr_axis_index", dpad_lr_axis_index_);
   get_parameter("dpad_ud_axis_index", dpad_ud_axis_index_);
 
@@ -86,6 +88,7 @@ TeleopManagerNode::TeleopManagerNode()
     "/admin/awsim/status", 10, std::bind(&TeleopManagerNode::status_callback, this, _1));
 
   drive_pub_   = create_publisher<autoware_auto_control_msgs::msg::AckermannControlCommand>("/control/command/control_cmd", 10);
+  gear_pub_ = create_publisher<autoware_auto_vehicle_msgs::msg::GearCommand>("/control/command/gear_cmd", 10);
   trigger_pub_ = create_publisher<std_msgs::msg::Bool>("/rosbag2_recorder/trigger", 10);
 
   awsim_trigger_pub_ = create_publisher<std_msgs::msg::Bool>("/awsim/control_mode_request_topic", 10);
@@ -223,6 +226,7 @@ void TeleopManagerNode::ack_callback(const autoware_auto_control_msgs::msg::Acke
 void TeleopManagerNode::timer_callback()
 {
   autoware_auto_control_msgs::msg::AckermannControlCommand out;
+  autoware_auto_vehicle_msgs::msg::GearCommand gear;
   rclcpp::Time current_time = this->get_clock()->now();
 
   if ((current_time - last_joy_msg_time_).seconds() > joy_timeout_sec_) {
@@ -234,15 +238,25 @@ void TeleopManagerNode::timer_callback()
   }
 
   if (joy_active_) {
-    // joy_speed_ と joy_steer_ は joy_callback でスケール適用済みの値
-    out.longitudinal.acceleration = joy_speed_;
+    // joy_speed_ と joy_steer_ は joy_callback でスケール適用済みの値。
+    // 後退時は gear を REVERSE にして、スロットル量は正の大きさとして渡す。
+    const bool reverse = joy_speed_ < -reverse_deadzone_;
+    const double throttle = reverse ? -joy_speed_ : joy_speed_;
+    gear.command = reverse ?
+      autoware_auto_vehicle_msgs::msg::GearCommand::REVERSE :
+      autoware_auto_vehicle_msgs::msg::GearCommand::DRIVE;
+    out.longitudinal.speed = throttle;
+    out.longitudinal.acceleration = throttle;
     out.lateral.steering_tire_angle = joy_steer_;
     out.lateral.steering_tire_rotation_rate = 1.0;
   } else if (ack_active_) {
+    gear.command = autoware_auto_vehicle_msgs::msg::GearCommand::DRIVE;
     out = last_autonomy_msg_;
     out.lateral.steering_tire_rotation_rate = 0.5;
   } else {
     // Stop
+    gear.command = autoware_auto_vehicle_msgs::msg::GearCommand::DRIVE;
+    out.longitudinal.speed = 0.0;
     out.longitudinal.acceleration = 0.0;
     out.lateral.steering_tire_angle = 0.0;
     out.lateral.steering_tire_rotation_rate = 0.0;
@@ -251,9 +265,9 @@ void TeleopManagerNode::timer_callback()
   out.stamp = current_time;
   out.longitudinal.stamp = current_time;
   out.lateral.stamp = current_time;
+  gear.stamp = current_time;
 
-  out.longitudinal.speed = current_lap_;
-
+  gear_pub_->publish(gear);
   drive_pub_->publish(out);
 }
 

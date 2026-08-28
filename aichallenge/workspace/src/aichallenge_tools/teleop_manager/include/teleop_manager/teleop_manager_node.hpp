@@ -7,6 +7,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 #include "autoware_auto_control_msgs/msg/ackermann_control_command.hpp"
+#include "autoware_auto_vehicle_msgs/msg/gear_command.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
@@ -31,6 +32,7 @@ private:
   rclcpp::Subscription<autoware_auto_control_msgs::msg::AckermannControlCommand>::SharedPtr ack_sub_;
   rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr status_sub_;
   rclcpp::Publisher<autoware_auto_control_msgs::msg::AckermannControlCommand>::SharedPtr drive_pub_;
+  rclcpp::Publisher<autoware_auto_vehicle_msgs::msg::GearCommand>::SharedPtr gear_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr                trigger_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr                awsim_trigger_pub_;
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr               reset_publisher_;
@@ -48,6 +50,7 @@ private:
   int dpad_ud_axis_index_;
   double timer_hz_;
   double joy_timeout_sec_;
+  double reverse_deadzone_;
 
   // State
   bool joy_active_, ack_active_;

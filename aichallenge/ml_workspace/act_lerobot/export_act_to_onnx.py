@@ -60,14 +60,19 @@ def main() -> None:
 
     stats_path = args.policy_path / "policy_preprocessor_step_3_normalizer_processor.safetensors"
     wrapper = ActOnnxWrapper(policy, stats_path).eval()
+    try:
+        device = next(wrapper.parameters()).device
+    except StopIteration:
+        device = torch.device("cpu")
+    wrapper.to(device)
 
     image_feature = policy.config.input_features["observation.images.front"]
     state_feature = policy.config.input_features["observation.state"]
     _, height, width = image_feature.shape
     state_dim = state_feature.shape[0]
 
-    dummy_image = torch.zeros(1, 3, height, width, dtype=torch.float32)
-    dummy_state = torch.zeros(1, state_dim, dtype=torch.float32)
+    dummy_image = torch.zeros(1, 3, height, width, dtype=torch.float32, device=device)
+    dummy_state = torch.zeros(1, state_dim, dtype=torch.float32, device=device)
 
     with torch.no_grad():
         torch.onnx.export(

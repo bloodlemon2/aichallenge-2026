@@ -6,6 +6,7 @@
     steer_scale:          0.37 #1.0
     timer_hz:             50.0
     joy_timeout_sec:      0.5 
+    reverse_deadzone:     0.05
 
     # --- モード切替ボタン ---
     joy_button_index:     2   # △ボタンで手動モード
