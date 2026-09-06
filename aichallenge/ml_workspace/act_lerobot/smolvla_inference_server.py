@@ -74,7 +74,8 @@ class SmolVLAInference:
         with torch.no_grad():
             batch = self.preprocessor(raw_batch)
             actions = self.policy.predict_action_chunk(batch)
-            actions = self.postprocessor(actions)
+            postprocessed = self.postprocessor({ACTION: actions})
+            actions = postprocessed[ACTION] if isinstance(postprocessed, dict) else postprocessed
 
         action_chunk = actions.detach().cpu().numpy().astype(np.float32)
         if action_chunk.ndim == 3:
