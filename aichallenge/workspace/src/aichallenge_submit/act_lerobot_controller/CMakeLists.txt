@@ -8,6 +8,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 install(PROGRAMS
   act_lerobot_controller/act_lerobot_controller_node.py
+  act_lerobot_controller/smolvla_remote_controller_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

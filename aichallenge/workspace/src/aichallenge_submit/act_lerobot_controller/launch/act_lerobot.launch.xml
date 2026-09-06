@@ -3,7 +3,7 @@
   <arg name="use_sim_time" default="true"/>
   <arg name="image_topic" default="/sensing/camera/image_raw"/>
   <arg name="control_cmd_topic" default="/control/command/control_cmd"/>
-  <arg name="policy_path" default="/aichallenge/ml_workspace/act_lerobot/ckpt/act_policy_0828_1cart.onnx"/>
+  <arg name="policy_path" default="/aichallenge/ml_workspace/act_lerobot/ckpt/act_policy_4cart.onnx"/>
   <arg name="dataset_repo_id" default=""/>
   <arg name="dataset_root" default=""/>
 

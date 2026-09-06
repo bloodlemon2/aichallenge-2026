@@ -1,0 +1,20 @@
+<launch>
+  <arg name="smolvla_remote_node_param" default="$(find-pkg-share act_lerobot_controller)/config/smolvla_remote_node.param.yaml"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="image_topic" default="/sensing/camera/image_raw"/>
+  <arg name="control_cmd_topic" default="/control/command/control_cmd"/>
+  <arg name="server_url" default="http://127.0.0.1:8765/predict"/>
+  <arg name="task" default="drive the racing kart around the course"/>
+
+  <node pkg="act_lerobot_controller"
+        exec="smolvla_remote_controller_node.py"
+        name="smolvla_remote_controller_node"
+        output="screen">
+    <param from="$(var smolvla_remote_node_param)"/>
+    <param name="server_url" value="$(var server_url)"/>
+    <param name="task" value="$(var task)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <remap from="/image_raw" to="$(var image_topic)"/>
+    <remap from="/control/command/control_cmd" to="$(var control_cmd_topic)"/>
+  </node>
+</launch>

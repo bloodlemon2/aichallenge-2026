@@ -21,6 +21,13 @@ pip install -e ".[training]"
 pip install rosbags opencv-python pyyaml tqdm
 ```
 
+SmolVLAなどのVLAを学習する場合は、追加でVLA用依存関係を入れます。
+
+```bash
+cd ~/aichallenge/lerobot
+pip install -e ".[smolvla]"
+```
+
 確認:
 
 ```bash
@@ -82,6 +89,7 @@ python3 convert_rosbag_to_lerobot.py \
   --repo-id local/aichallenge_act \
   --fps 40 \
   --state-mode vehicle_status \
+  --task "drive the racing kart around the course" \
   --overwrite
 ```
 
@@ -96,6 +104,8 @@ python -c "from lerobot.datasets import LeRobotDataset; ds=LeRobotDataset('local
 - `observation.images.front`: RGB画像
 - `action`: `[acceleration, steering_tire_angle]`
 - `observation.state`: `[longitudinal_velocity, heading_rate]`
+
+VLAでは `--task` の自然言語文が入力として使われます。単一タスクなら固定文で問題ありません。複数タスクを混ぜる場合は、episodeごとに異なるtask文を付けて変換してください。
 
 ### データセット名を変えて変換する場合
 
@@ -283,7 +293,107 @@ DEVICE=cpu STEPS=5000 BATCH_SIZE=1 NUM_WORKERS=0 SAVE_FREQ=1000 LOG_FREQ=50 OUTP
 outputs/train/<run_name>/checkpoints/100000/pretrained_model
 ```
 
-## 6. ONNX export
+## 6. SmolVLA 学習
+
+LeRobot v0.6.0には `smolvla`, `pi0`, `pi05`, `vla_jepa`, `xvla` などのVLA系policyがあります。AI Challengeで最初に試す対象としては、比較的小さい `smolvla` を想定しています。
+
+SmolVLAは画像、state、actionに加えて、LeRobotDataset内の `task` 文字列を使います。データ変換時に `--task` を指定してください。
+
+事前学習済みSmolVLAからfine-tuneする例:
+
+```bash
+cd ~/aichallenge/aichallenge-2026/aichallenge/ml_workspace/act_lerobot
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate lerobot-aichallenge
+
+POLICY_PATH=lerobot/smolvla_base \
+DATASET_REPO_ID=local/aichallenge_act \
+DATASET_ROOT=./dataset/aichallenge_act \
+DEVICE=cuda \
+STEPS=50000 \
+BATCH_SIZE=1 \
+NUM_WORKERS=2 \
+SAVE_FREQ=5000 \
+LOG_FREQ=100 \
+OUTPUT_DIR=./outputs/train/smolvla_$(date +%Y%m%d_%H%M%S) \
+./train_smolvla.bash
+```
+
+ネットから `lerobot/smolvla_base` を取得できない場合、またはscratchで試す場合:
+
+```bash
+POLICY_PATH=scratch \
+DATASET_REPO_ID=local/aichallenge_act \
+DATASET_ROOT=./dataset/aichallenge_act \
+DEVICE=cuda \
+STEPS=50000 \
+BATCH_SIZE=1 \
+NUM_WORKERS=2 \
+OUTPUT_DIR=./outputs/train/smolvla_scratch_$(date +%Y%m%d_%H%M%S) \
+./train_smolvla.bash
+```
+
+SmolVLAはACTより重いので、最初は `BATCH_SIZE=1` から確認してください。メモリに余裕があれば `BATCH_SIZE=2` 以上を試します。
+
+ACTはONNX化してDocker内で推論します。SmolVLAはACTより重く、ROS Humble Docker内へLeRobot v0.6.0を直接入れにくいため、ホスト側condaの推論サーバとDocker内ROS2 bridge nodeに分けます。
+
+```text
+実装済み: ホスト側condaでSmolVLA推論サーバを動かし、Docker内ROS2 bridge nodeがHTTPで呼ぶ
+要検証: SmolVLAをONNX/TensorRT等へexportしてDocker内で直接推論する
+非推奨: ROS Humble Docker内へLeRobot v0.6.0を直接入れる
+```
+
+### SmolVLA remote推論で走行する場合
+
+LeRobot v0.6.0はPython 3.12前提、ROS Humbleは通常Python 3.10前提なので、同じPythonプロセスに混ぜません。ホスト側condaでSmolVLA推論HTTPサーバを起動し、Docker内のROS2 bridge nodeがそのサーバを呼びます。
+
+端末1: ホスト側condaでSmolVLA推論サーバを起動します。
+
+```bash
+cd ~/aichallenge/aichallenge-2026/aichallenge/ml_workspace/act_lerobot
+source ~/miniforge3/etc/profile.d/conda.sh
+conda activate lerobot-aichallenge
+
+python3 smolvla_inference_server.py \
+  --policy-path ./outputs/train/smolvla_20260828_210000/checkpoints/050000/pretrained_model \
+  --device cuda \
+  --host 127.0.0.1 \
+  --port 8765 \
+  --task "drive the racing kart around the course"
+```
+
+端末2: AI Challengeを `smolvla_remote` で起動します。conda環境に入る必要はありません。
+
+```bash
+cd ~/aichallenge/aichallenge-2026
+make down
+CONTROL_METHOD=smolvla_remote make dev
+```
+
+`dev4`で1台だけSmolVLA、他をMPCにする例:
+
+```bash
+D1_CONTROL_METHOD=smolvla_remote make dev4
+```
+
+SmolVLAで制御しているか確認:
+
+```bash
+ROS_DOMAIN_ID=1 docker compose -p 1 run --rm --no-deps autoware-command \
+  bash -lc 'source /opt/ros/humble/setup.bash && source /aichallenge/workspace/install/setup.bash && ros2 topic info -v /control/command/control_cmd'
+```
+
+`Node name: smolvla_remote_controller_node` が出ればSmolVLA remote制御です。
+
+サーバ疎通確認:
+
+```bash
+curl http://127.0.0.1:8765/health
+```
+
+SmolVLAはACTより重いため、40Hzで毎フレーム推論できない可能性があります。このbridge nodeはaction chunkを受け取り、次のchunkが必要になった時だけHTTP推論を呼びます。遅い場合は `n_action_steps` を増やす、画像サイズを下げる、またはVLAを低周期で使ってMPC/ACTへ目標を渡す構成を検討してください。
+
+## 7. ONNX export
 
 `make dev` のAutoware Docker内では LeRobot v0.6.0 を直接使いません。学習済みpolicyをONNXへ変換し、ROS2ノードは `onnxruntime` だけで推論します。
 
@@ -309,7 +419,7 @@ python -c "import onnxruntime as ort, numpy as np; s=ort.InferenceSession('./ckp
 (1, 20, 2)
 ```
 
-## 7. Docker image更新
+## 8. Docker image更新
 
 ROS2推論には `onnxruntime` が必要です。`requirements.txt` に追加済みなので、Docker imageを再ビルドします。
 
@@ -326,7 +436,7 @@ docker compose run --rm --no-deps autoware-command \
   bash -lc 'python3 -c "import onnxruntime as ort; print(ort.__version__)"'
 ```
 
-## 8. ROS2 推論
+## 9. ROS2 推論
 
 `CONTROL_METHOD=act_lerobot make dev` で起動する場合、policy pathはDocker内パスです。デフォルトは以下です。
 

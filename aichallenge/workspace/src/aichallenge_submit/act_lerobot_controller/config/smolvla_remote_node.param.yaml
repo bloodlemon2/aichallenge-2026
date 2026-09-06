@@ -1,0 +1,18 @@
+/**:
+  ros__parameters:
+    server_url: "http://127.0.0.1:8765/predict"
+    task: "drive the racing kart around the course"
+    timeout_sec: 2.0
+    jpeg_quality: 80
+
+    image_height: 200
+    image_width: 320
+    crop_top_ratio: 0.375
+    crop_bottom_ratio: 0.0
+    n_action_steps: 20
+
+    state_mode: "vehicle_status"  # "none", "odometry", or "vehicle_status"
+    control_mode: "ai"  # "ai" or "fixed"
+    acceleration: 0.6
+    debug: false
+    log_interval_sec: 5.0
